@@ -2,42 +2,18 @@
    BLOG GAMER - script.js
    Backend: Firebase Authentication + Realtime Database
    ----------------------------------------------------------
-   1) Cole abaixo a configuração do seu projeto Firebase
-      (Console Firebase > Configurações do projeto > Seus apps > Web).
-   2) Em Authentication > Sign-in method ative "E-mail/senha" e "Google".
-      Crie o usuário admin@admin.com com a senha que quiser.
-      Em Authentication > Settings > Domínios autorizados adicione
-      SEUUSUARIO.github.io
-   3) Em Realtime Database > Regras, cole:
-   {
-     "rules": {
-       ".read": true,
-       "settings": { ".write": "auth != null && auth.token.email === 'admin@admin.com'" },
-       "menu":     { ".write": "auth != null && auth.token.email === 'admin@admin.com'" },
-       "posts":    { ".write": "auth != null && auth.token.email === 'admin@admin.com'" },
-       "widgets":  { ".write": "auth != null && auth.token.email === 'admin@admin.com'" },
-       "pages":    { ".write": "auth != null && auth.token.email === 'admin@admin.com'" },
-       "comments": {
-         "$postId": {
-           "$cid": {
-             ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || auth.token.email === 'admin@admin.com' || data.child('uid').val() === auth.uid)",
-             ".validate": "!newData.exists() || (newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 3000)"
-           }
-         }
-       }
-     }
-   }
    ========================================================== */
 
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  databaseURL: "https://SEU_PROJETO-default-rtdb.firebaseio.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:0000000000000000"
+  apiKey: "AIzaSyCczFv_waAwVLRbr__l1XBjMV_Id6wpnV4",
+  authDomain: "novo-games-workin.firebaseapp.com",
+  databaseURL: "https://novo-games-workin-default-rtdb.firebaseio.com",
+  projectId: "novo-games-workin",
+  storageBucket: "novo-games-workin.firebasestorage.app",
+  messagingSenderId: "470006732824",
+  appId: "1:470006732824:web:e1f5b49c356cfb2bc20b6d"
 };
+
 
 const ADMIN_EMAIL = "admin@admin.com";
 
