@@ -459,16 +459,48 @@ function setupEditor(content) {
 const editorValue = () => ($("#ed-code").hidden ? $("#ed-visual").innerHTML : $("#ed-code").value);
 
 /* ---------- Postagens ---------- */
+let adminPostPage = 1, adminPostQuery = "";
+const ADMIN_PER_PAGE = 15, ADMIN_MAX_BTNS = 5;
 function adminPosts(body) {
   if (editing) return;
+  const norm = t => (t || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const q = norm(adminPostQuery.trim());
+  const list = q ? state.posts.filter(p => norm(p.title).includes(q) || norm((p.labels || []).join(" ")).includes(q) || norm(p.content).includes(q)) : state.posts;
+  const total = Math.max(1, Math.ceil(list.length / ADMIN_PER_PAGE));
+  if (adminPostPage > total) adminPostPage = total;
+  if (adminPostPage < 1) adminPostPage = 1;
+  const cur = adminPostPage;
+  const items = list.slice((cur - 1) * ADMIN_PER_PAGE, cur * ADMIN_PER_PAGE);
+  let start = Math.max(1, cur - Math.floor(ADMIN_MAX_BTNS / 2));
+  let end = Math.min(total, start + ADMIN_MAX_BTNS - 1);
+  start = Math.max(1, end - ADMIN_MAX_BTNS + 1);
+  let pag = "";
+  if (total > 1) {
+    const arrows = total > ADMIN_MAX_BTNS;
+    if (arrows) pag += `<button data-pg="1" ${cur === 1 ? "disabled" : ""} aria-label="Primeira">«</button><button data-pg="${cur - 1}" ${cur === 1 ? "disabled" : ""} aria-label="Anterior">‹</button>`;
+    for (let i = start; i <= end; i++) pag += `<button data-pg="${i}" class="${i === cur ? "active" : ""}">${i}</button>`;
+    if (arrows) pag += `<button data-pg="${cur + 1}" ${cur === total ? "disabled" : ""} aria-label="Próxima">›</button><button data-pg="${total}" ${cur === total ? "disabled" : ""} aria-label="Última">»</button>`;
+    pag = `<div class="admin-pagination">${pag}</div>`;
+  }
   body.innerHTML = `
-    <button class="btn" id="new-post">+ Nova postagem</button>
-    <ul class="admin-list">${state.posts.map(p => `
-      <li><div><b>${esc(p.title)}</b><br><small>${fmtDate(p.date)} · ${(p.labels || []).join(", ")}</small></div>
+    <div class="admin-toolbar">
+      <button class="btn" id="new-post">+ Nova postagem</button>
+      <input type="search" id="admin-post-search" placeholder="Pesquisar postagens..." value="${esc(adminPostQuery)}">
+    </div>
+    <p class="hint admin-count">${list.length} postagem(ns)${q ? " encontrada(s)" : ""} · página ${cur} de ${total}</p>
+    <ul class="admin-list">${items.map(p => `
+      <li><div class="info"><b>${esc(p.title)}</b><small>${fmtDate(p.date)} · ${esc((p.labels || []).join(", "))}</small></div>
       <div class="actions"><a class="btn sm ghost" href="#/post/${p.id}" target="_blank">Ver</a>
-      <button class="btn sm" data-edit="${p.id}">Editar</button><button class="btn sm danger" data-del="${p.id}">Excluir</button></div></li>`).join("") || '<li class="hint">Nenhuma postagem ainda.</li>'}
-    </ul>`;
+      <button class="btn sm" data-edit="${p.id}">Editar</button><button class="btn sm danger" data-del="${p.id}">Excluir</button></div></li>`).join("") || `<li class="hint">${q ? "Nenhuma postagem encontrada." : "Nenhuma postagem ainda."}</li>`}
+    </ul>${pag}`;
   $("#new-post").onclick = () => postForm(body, null);
+  const si = $("#admin-post-search");
+  let tmr;
+  si.oninput = () => { clearTimeout(tmr); tmr = setTimeout(() => {
+    adminPostQuery = si.value; adminPostPage = 1; adminPosts(body);
+    const n = $("#admin-post-search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length);
+  }, 250); };
+  $$("[data-pg]", body).forEach(b => b.onclick = () => { adminPostPage = +b.dataset.pg; adminPosts(body); $("#admin-panel").scrollTop = 0; });
   $$("[data-edit]", body).forEach(b => b.onclick = () => postForm(body, state.posts.find(p => p.id === b.dataset.edit)));
   $$("[data-del]", body).forEach(b => b.onclick = () => {
     if (confirm("Excluir esta postagem e seus comentários?")) {
