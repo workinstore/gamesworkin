@@ -1,0 +1,17 @@
+{
+  "name": "Games Workin'",
+  "short_name": "Games Workin'",
+  "start_url": "/gamesworkin",
+  "scope": "/gamesworkin",
+  "display": "standalone",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [
+    {
+      "src": "gw.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
