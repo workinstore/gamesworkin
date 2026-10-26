@@ -742,80 +742,119 @@ function adminFeeds(body) {
   const defUrl = (location.origin + location.pathname).replace(/index\.html$/, "");
   body.innerHTML = `
     <form class="form" id="feed-form">
-      <p class="hint">Gere um código HTML único para colar em qualquer site ou blog (áreas HTML / widgets). Os posts são puxados ao vivo do Firebase e o visual herda o estilo do site onde for colado.</p>
+      <p class="hint">Gere um BLOCO compacto para colar em um lugar específico de qualquer site ou blog (widget HTML, barra lateral, rodapé...). O bloco tem largura e altura próprias, com rolagem interna, e não ocupa a página inteira.</p>
       <div class="row">
         <div class="form"><label>Quantidade de posts</label><input id="f-qty" type="number" min="1" max="50" value="5"></div>
         <div class="form"><label>Título do bloco (opcional)</label><input id="f-title" value="Últimas postagens"></div>
       </div>
       <div class="form"><label>Endereço do blog (para os links)</label><input id="f-url" value="${esc(defUrl)}"></div>
       <div class="row">
+        <div class="form"><label>Largura máxima (px)</label><input id="f-w" type="number" min="150" max="1200" value="320"></div>
+        <div class="form"><label>Altura máxima (px, 0 = automática)</label><input id="f-h" type="number" min="0" max="2000" value="400"></div>
+      </div>
+      <div class="row">
+        <div class="form"><label>Alinhamento</label>
+          <select id="f-align"><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></select></div>
+        <div class="form"><label>Cor de fundo</label><input id="f-bg" type="color" value="#ffffff"></div>
+        <div class="form"><label>Cor do texto</label><input id="f-fg" type="color" value="#222222"></div>
+        <div class="form"><label>Cor de destaque</label><input id="f-ac" type="color" value="#ff2e63"></div>
+      </div>
+      <div class="row">
         <label><input type="checkbox" id="f-img" checked> Mostrar imagem de capa</label>
         <label><input type="checkbox" id="f-date" checked> Mostrar data</label>
         <label><input type="checkbox" id="f-sum" checked> Mostrar resumo</label>
+        <label><input type="checkbox" id="f-border" checked> Borda e sombra</label>
       </div>
       <div class="actions">
-        <button type="submit" class="btn">Baixar feed.html</button>
+        <button type="submit" class="btn">Baixar feed-bloco.html</button>
         <button type="button" class="btn ghost" id="f-copy">Copiar código</button>
       </div>
-      <label>Pré-visualização do código</label>
+      <label>Pré-visualização do bloco</label>
+      <div id="f-prev" style="background:#eee;padding:12px;border-radius:6px;max-height:460px;overflow:auto"></div>
+      <label>Código</label>
       <textarea id="f-code" rows="10" readonly style="font-family:monospace;font-size:12px"></textarea>
     </form>`;
   const build = () => buildFeedHtml({
     qty: Math.min(50, Math.max(1, +$("#f-qty").value || 5)),
     title: $("#f-title").value.trim(),
     url: $("#f-url").value.trim() || defUrl,
+    w: Math.min(1200, Math.max(150, +$("#f-w").value || 320)),
+    h: Math.max(0, +$("#f-h").value || 0),
+    align: $("#f-align").value,
+    bg: $("#f-bg").value, fg: $("#f-fg").value, ac: $("#f-ac").value,
+    border: $("#f-border").checked,
     img: $("#f-img").checked, date: $("#f-date").checked, sum: $("#f-sum").checked
   });
-  const refresh = () => { $("#f-code").value = build(); };
-  $$("#feed-form input").forEach(i => i.addEventListener("input", refresh));
+  let t;
+  const refresh = () => {
+    const code = build();
+    $("#f-code").value = code;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const prev = $("#f-prev");
+      prev.innerHTML = code;
+      // executa o script do bloco na pré-visualização
+      prev.querySelectorAll("script").forEach(old => {
+        const s = document.createElement("script"); s.textContent = old.textContent; old.replaceWith(s);
+      });
+    }, 300);
+  };
+  $$("#feed-form input, #feed-form select").forEach(i => { i.addEventListener("input", refresh); i.addEventListener("change", refresh); });
   refresh();
   $("#f-copy").onclick = () => navigator.clipboard.writeText(build()).then(() => toast("Código copiado!"));
   $("#feed-form").onsubmit = e => {
     e.preventDefault();
     const blob = new Blob([build()], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = "feed.html";
+    a.href = URL.createObjectURL(blob); a.download = "feed-bloco.html";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    toast("Download iniciado: feed.html");
+    toast("Download iniciado: feed-bloco.html");
   };
 }
 
 function buildFeedHtml(o) {
   const id = "bf-" + Math.random().toString(36).slice(2, 8);
   const cfg = JSON.stringify({ db: firebaseConfig.databaseURL, url: o.url.replace(/\/?$/, "/"), qty: o.qty, img: o.img, date: o.date, sum: o.sum });
-  return `<!-- Feed de postagens: ${esc(state.settings.title || "")} -->
-<div class="blog-feed" id="${id}">
-${o.title ? `  <h3 class="blog-feed-title">${esc(o.title)}</h3>\n` : ""}  <ul class="blog-feed-list"><li>Carregando...</li></ul>
+  const margin = o.align === "center" ? "0 auto" : o.align === "right" ? "0 0 0 auto" : "0 auto 0 0";
+  return `<!-- Bloco de postagens: ${esc(state.settings.title || "")} | cole onde quiser que o bloco apareça -->
+<div class="bf-wrap" id="${id}">
+${o.title ? `  <div class="bf-title">${esc(o.title)}</div>\n` : ""}  <ul class="bf-list"><li class="bf-msg">Carregando...</li></ul>
 </div>
 <style>
-#${id}{font:inherit;color:inherit}
-#${id} .blog-feed-list{list-style:none;margin:0;padding:0}
-#${id} .blog-feed-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid currentColor;border-bottom-color:rgba(127,127,127,.25)}
-#${id} .blog-feed-item:last-child{border-bottom:0}
-#${id} .blog-feed-item img{width:80px;height:60px;object-fit:cover;flex-shrink:0;border-radius:4px}
-#${id} .blog-feed-item a{color:inherit;text-decoration:none;font-weight:bold}
-#${id} .blog-feed-item a:hover{text-decoration:underline}
-#${id} .blog-feed-date{display:block;font-size:.8em;opacity:.7;margin-top:2px}
-#${id} .blog-feed-sum{margin:4px 0 0;font-size:.9em;opacity:.85}
+#${id},#${id} *{box-sizing:border-box}
+#${id}{display:block;position:relative;float:none;clear:both;width:100%;max-width:${o.w}px;margin:${margin};padding:0;background:${o.bg};color:${o.fg};font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;text-align:left;overflow:hidden;contain:layout paint;${o.border ? "border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08);" : ""}}
+#${id} .bf-title{margin:0;padding:10px 12px;font-size:15px;font-weight:bold;color:${o.bg};background:${o.ac};text-transform:uppercase;letter-spacing:.5px}
+#${id} .bf-list{list-style:none;margin:0;padding:0 12px;${o.h ? `max-height:${o.h}px;overflow-y:auto;` : ""}}
+#${id} .bf-list li{list-style:none;margin:0;padding:0;background:none}
+#${id} .bf-list li:before{content:none;display:none}
+#${id} .bf-item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(127,127,127,.2)}
+#${id} .bf-item:last-child{border-bottom:0}
+#${id} .bf-msg{padding:12px 0;opacity:.7}
+#${id} .bf-item img{display:block;width:70px;height:52px;max-width:none;object-fit:cover;flex-shrink:0;border-radius:4px;margin:0;border:0}
+#${id} .bf-txt{min-width:0;flex:1}
+#${id} a{color:${o.fg};text-decoration:none;font-weight:bold;word-wrap:break-word}
+#${id} a:hover{color:${o.ac}}
+#${id} .bf-date{display:block;font-size:11px;opacity:.65;margin-top:2px;color:${o.ac}}
+#${id} .bf-sum{margin:4px 0 0;font-size:12px;opacity:.85;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 </style>
 <script>
 (function(){
   var C=${cfg};
-  var box=document.getElementById("${id}"),ul=box.querySelector(".blog-feed-list");
+  var box=document.getElementById("${id}");if(!box)return;var ul=box.querySelector(".bf-list");
   function e(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
   function txt(h){var d=document.createElement("div");d.innerHTML=h||"";return(d.textContent||"").trim()}
   fetch(C.db.replace(/\\/$/,"")+"/posts.json").then(function(r){return r.json()}).then(function(d){
     var l=Object.keys(d||{}).map(function(k){var p=d[k];p.id=k;return p}).sort(function(a,b){return(b.date||0)-(a.date||0)}).slice(0,C.qty);
-    if(!l.length){ul.innerHTML="<li>Nenhuma postagem.</li>";return}
+    if(!l.length){ul.innerHTML='<li class="bf-msg">Nenhuma postagem.</li>';return}
     ul.innerHTML=l.map(function(p){
       var u=C.url+"#/post/"+encodeURIComponent(p.id),s=txt(p.content);
-      return '<li class="blog-feed-item">'+(C.img&&p.image?'<a href="'+u+'" target="_blank" rel="noopener"><img src="'+e(p.image)+'" alt="'+e(p.title)+'" loading="lazy"></a>':"")+
-        '<div><a href="'+u+'" target="_blank" rel="noopener">'+e(p.title)+'</a>'+
-        (C.date&&p.date?'<span class="blog-feed-date">'+new Date(p.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})+'</span>':"")+
-        (C.sum&&s?'<p class="blog-feed-sum">'+e(s.slice(0,140))+(s.length>140?"…":"")+'</p>':"")+'</div></li>';
+      return '<li class="bf-item">'+(C.img&&p.image?'<a href="'+u+'" target="_blank" rel="noopener"><img src="'+e(p.image)+'" alt="'+e(p.title)+'" loading="lazy"></a>':"")+
+        '<div class="bf-txt"><a href="'+u+'" target="_blank" rel="noopener">'+e(p.title)+'</a>'+
+        (C.date&&p.date?'<span class="bf-date">'+new Date(p.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})+'</span>':"")+
+        (C.sum&&s?'<p class="bf-sum">'+e(s.slice(0,140))+(s.length>140?"…":"")+'</p>':"")+'</div></li>';
     }).join("");
-  }).catch(function(){ul.innerHTML="<li>Não foi possível carregar as postagens.</li>"});
+  }).catch(function(){ul.innerHTML='<li class="bf-msg">Não foi possível carregar as postagens.</li>'});
 })();
 <\/script>`;
 }
