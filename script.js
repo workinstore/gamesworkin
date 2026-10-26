@@ -413,7 +413,7 @@ function renderAdmin() {
   if (!state.isAdmin || $("#admin-panel").hidden) return;
   const body = $("#admin-body");
   if (editing && (adminTab === "posts" || adminTab === "pages")) return; // não sobrescrever editor aberto
-  ({ posts: adminPosts, pages: adminPages, menu: adminMenu, widgets: adminWidgets, look: adminLook })[adminTab](body);
+  ({ posts: adminPosts, pages: adminPages, menu: adminMenu, widgets: adminWidgets, look: adminLook, feeds: adminFeeds })[adminTab](body);
 }
 
 /* ---------- Editor rico (com modo HTML) ---------- */
@@ -730,3 +730,88 @@ function adminLook(body) {
 /* ---------- Início ---------- */
 renderMenu();
 if (STATIC_PAGE) route();
+
+/* ==========================================================
+   FEEDS — gera um HTML único (embed) com os últimos posts
+   ========================================================== */
+function adminFeeds(body) {
+  const defUrl = (location.origin + location.pathname).replace(/index\.html$/, "");
+  body.innerHTML = `
+    <form class="form" id="feed-form">
+      <p class="hint">Gere um código HTML único para colar em qualquer site ou blog (áreas HTML / widgets). Os posts são puxados ao vivo do Firebase e o visual herda o estilo do site onde for colado.</p>
+      <div class="row">
+        <div class="form"><label>Quantidade de posts</label><input id="f-qty" type="number" min="1" max="50" value="5"></div>
+        <div class="form"><label>Título do bloco (opcional)</label><input id="f-title" value="Últimas postagens"></div>
+      </div>
+      <div class="form"><label>Endereço do blog (para os links)</label><input id="f-url" value="${esc(defUrl)}"></div>
+      <div class="row">
+        <label><input type="checkbox" id="f-img" checked> Mostrar imagem de capa</label>
+        <label><input type="checkbox" id="f-date" checked> Mostrar data</label>
+        <label><input type="checkbox" id="f-sum" checked> Mostrar resumo</label>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn">Baixar feed.html</button>
+        <button type="button" class="btn ghost" id="f-copy">Copiar código</button>
+      </div>
+      <label>Pré-visualização do código</label>
+      <textarea id="f-code" rows="10" readonly style="font-family:monospace;font-size:12px"></textarea>
+    </form>`;
+  const build = () => buildFeedHtml({
+    qty: Math.min(50, Math.max(1, +$("#f-qty").value || 5)),
+    title: $("#f-title").value.trim(),
+    url: $("#f-url").value.trim() || defUrl,
+    img: $("#f-img").checked, date: $("#f-date").checked, sum: $("#f-sum").checked
+  });
+  const refresh = () => { $("#f-code").value = build(); };
+  $$("#feed-form input").forEach(i => i.addEventListener("input", refresh));
+  refresh();
+  $("#f-copy").onclick = () => navigator.clipboard.writeText(build()).then(() => toast("Código copiado!"));
+  $("#feed-form").onsubmit = e => {
+    e.preventDefault();
+    const blob = new Blob([build()], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "feed.html";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast("Download iniciado: feed.html");
+  };
+}
+
+function buildFeedHtml(o) {
+  const id = "bf-" + Math.random().toString(36).slice(2, 8);
+  const cfg = JSON.stringify({ db: firebaseConfig.databaseURL, url: o.url.replace(/\/?$/, "/"), qty: o.qty, img: o.img, date: o.date, sum: o.sum });
+  return `<!-- Feed de postagens: ${esc(state.settings.title || "")} -->
+<div class="blog-feed" id="${id}">
+${o.title ? `  <h3 class="blog-feed-title">${esc(o.title)}</h3>\n` : ""}  <ul class="blog-feed-list"><li>Carregando...</li></ul>
+</div>
+<style>
+#${id}{font:inherit;color:inherit}
+#${id} .blog-feed-list{list-style:none;margin:0;padding:0}
+#${id} .blog-feed-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid currentColor;border-bottom-color:rgba(127,127,127,.25)}
+#${id} .blog-feed-item:last-child{border-bottom:0}
+#${id} .blog-feed-item img{width:80px;height:60px;object-fit:cover;flex-shrink:0;border-radius:4px}
+#${id} .blog-feed-item a{color:inherit;text-decoration:none;font-weight:bold}
+#${id} .blog-feed-item a:hover{text-decoration:underline}
+#${id} .blog-feed-date{display:block;font-size:.8em;opacity:.7;margin-top:2px}
+#${id} .blog-feed-sum{margin:4px 0 0;font-size:.9em;opacity:.85}
+</style>
+<script>
+(function(){
+  var C=${cfg};
+  var box=document.getElementById("${id}"),ul=box.querySelector(".blog-feed-list");
+  function e(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+  function txt(h){var d=document.createElement("div");d.innerHTML=h||"";return(d.textContent||"").trim()}
+  fetch(C.db.replace(/\\/$/,"")+"/posts.json").then(function(r){return r.json()}).then(function(d){
+    var l=Object.keys(d||{}).map(function(k){var p=d[k];p.id=k;return p}).sort(function(a,b){return(b.date||0)-(a.date||0)}).slice(0,C.qty);
+    if(!l.length){ul.innerHTML="<li>Nenhuma postagem.</li>";return}
+    ul.innerHTML=l.map(function(p){
+      var u=C.url+"#/post/"+encodeURIComponent(p.id),s=txt(p.content);
+      return '<li class="blog-feed-item">'+(C.img&&p.image?'<a href="'+u+'" target="_blank" rel="noopener"><img src="'+e(p.image)+'" alt="'+e(p.title)+'" loading="lazy"></a>':"")+
+        '<div><a href="'+u+'" target="_blank" rel="noopener">'+e(p.title)+'</a>'+
+        (C.date&&p.date?'<span class="blog-feed-date">'+new Date(p.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})+'</span>':"")+
+        (C.sum&&s?'<p class="blog-feed-sum">'+e(s.slice(0,140))+(s.length>140?"…":"")+'</p>':"")+'</div></li>';
+    }).join("");
+  }).catch(function(){ul.innerHTML="<li>Não foi possível carregar as postagens.</li>"});
+})();
+<\/script>`;
+}
