@@ -628,20 +628,37 @@ function adminMenu(body) {
         <select id="m-tab"><option value="">Mesma aba</option><option value="1">Nova aba</option></select>
       </div>
       <p class="hint">Dica: para marcadores use <code>#/label/NomeDoMarcador</code>; para páginas padrões use <code>nome-da-pasta/</code>.</p>
-      <div><button class="btn" type="submit">+ Adicionar ao menu</button></div>
+      <div><button class="btn" type="submit" id="m-submit">+ Adicionar ao menu</button> <button class="btn ghost" type="button" id="m-cancel" style="display:none">Cancelar edição</button></div>
     </form>
     <ul class="admin-list">${state.menu.map((m, i) => `
       <li><div><b>${esc(m.label)}</b><br><small>${esc(m.url)}</small></div>
       <div class="actions"><button class="btn sm ghost" data-up="${i}">↑</button><button class="btn sm ghost" data-down="${i}">↓</button>
+      <button class="btn sm ghost" data-edit="${m.id}">Editar</button>
       <button class="btn sm danger" data-del="${m.id}">Excluir</button></div></li>`).join("") || '<li class="hint">Menu vazio (apenas "Início").</li>'}
     </ul>
     <hr style="border-color:var(--border);margin:20px 0">
     <p class="hint">Atalho: adicionar um marcador existente ao menu</p>
     <div class="tags" style="margin-top:10px">${[...new Set(state.posts.flatMap(p => p.labels || []))].map(l => `<button class="tag" data-lbl="${esc(l)}">+ ${esc(l)}</button>`).join("") || '<span class="hint">Sem marcadores.</span>'}</div>`;
+  let editingId = null;
+  const resetForm = () => {
+    editingId = null; $("#menu-form").reset();
+    $("#m-submit").textContent = "+ Adicionar ao menu"; $("#m-cancel").style.display = "none";
+  };
+  $("#m-cancel").onclick = resetForm;
   $("#menu-form").onsubmit = e => {
     e.preventDefault();
-    db.ref("menu").push({ label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value, order: Date.now() });
+    const data = { label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value };
+    if (editingId) db.ref("menu/" + editingId).update(data);
+    else db.ref("menu").push({ ...data, order: Date.now() });
+    resetForm();
   };
+  $$("[data-edit]", body).forEach(b => b.onclick = () => {
+    const m = state.menu.find(x => x.id === b.dataset.edit); if (!m) return;
+    editingId = m.id;
+    $("#m-label").value = m.label || ""; $("#m-url").value = m.url || ""; $("#m-tab").value = m.newTab ? "1" : "";
+    $("#m-submit").textContent = "Salvar alterações"; $("#m-cancel").style.display = "";
+    $("#m-label").focus(); $("#menu-form").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
   $$("[data-lbl]", body).forEach(b => b.onclick = () => db.ref("menu").push({ label: b.dataset.lbl, url: "#/label/" + b.dataset.lbl, order: Date.now() }));
   $$("[data-del]", body).forEach(b => b.onclick = () => db.ref("menu/" + b.dataset.del).remove());
   const swap = (i, j) => {
