@@ -8,9 +8,9 @@
   --surface-2: #151c2a;
   --text: #e6ecf5;
   --muted: #8a97ad;
-  --primary: #00ff30;
-  --accent: #08125c;
-  --border: #1f3c27;
+  --primary: #00e5ff;
+  --accent: #ff3d6e;
+  --border: #1f2a3c;
   --radius: 6px;
   --font-title: 'Orbitron', sans-serif;
   --font-body: 'Rajdhani', sans-serif;
@@ -300,7 +300,8 @@ textarea.code { font-family: monospace; font-size: 14px; min-height: 260px; }
 }
 
 /* ===== Overlay de login (spinner) ===== */
-.login-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(4px); animation: fade .2s ease; }
+.login-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(4px); }
 .login-overlay[hidden] { display: none; }
-.login-overlay .loader { margin: 0; width: 56px; height: 56px; }
-.login-overlay p { color: var(--text); font-family: Orbitron, sans-serif; letter-spacing: 2px; margin: 0; }
+.login-spinner { width: 56px; height: 56px; border: 3px solid color-mix(in srgb, var(--primary) 20%, transparent); border-top-color: var(--primary); border-radius: 50%; animation: login-spin .8s linear infinite; }
+.login-overlay p { color: var(--text); letter-spacing: 2px; margin: 0; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
