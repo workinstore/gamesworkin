@@ -186,21 +186,42 @@ function renderSidebar() {
     ? lk.map(l => `<a class="tag" href="${link("#/label/" + encodeURIComponent(l))}">${esc(l)} (${labels[l]})</a>`).join("")
     : '<span class="hint">Nenhum marcador.</span>';
 
-  // Arquivo
-  const groups = {};
+  // Arquivo — agrupado por ano > mês > postagens (expansível)
+  const tree = {};
   state.posts.forEach(p => {
-    const d = new Date(p.date);
-    const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
-    groups[k] = (groups[k] || 0) + 1;
+    const d = new Date(p.date), y = d.getFullYear(), m = d.getMonth() + 1;
+    ((tree[y] = tree[y] || {})[m] = tree[y][m] || []).push(p);
   });
-  const keys = Object.keys(groups).sort().reverse();
-  $("#archive-list").innerHTML = keys.length
-    ? keys.map(k => {
-        const [y, m] = k.split("-");
-        return `<li><a href="${link("#/archive/" + k)}">${MONTHS[+m - 1]} ${y}</a><span>(${groups[k]})</span></li>`;
+  const years = Object.keys(tree).map(Number).sort((a, b) => b - a);
+  const openY = new Set($$("#archive-list .arc-year.open").map(e => e.dataset.y));
+  const openM = new Set($$("#archive-list .arc-month.open").map(e => e.dataset.k));
+  if (!openY.size && years.length) openY.add(String(years[0]));
+  $("#archive-list").innerHTML = years.length
+    ? years.map(y => {
+        const months = Object.keys(tree[y]).map(Number).sort((a, b) => b - a);
+        const cy = months.reduce((n, m) => n + tree[y][m].length, 0);
+        return `<li class="arc-year${openY.has(String(y)) ? " open" : ""}" data-y="${y}">
+          <button type="button" class="arc-toggle"><span class="arc-caret">▸</span> ${y} <span class="arc-count">(${cy})</span></button>
+          <ul class="arc-months">${months.map(m => {
+            const k = y + "-" + String(m).padStart(2, "0");
+            return `<li class="arc-month${openM.has(k) ? " open" : ""}" data-k="${k}">
+              <button type="button" class="arc-toggle"><span class="arc-caret">▸</span> ${MONTHS[m - 1]} <span class="arc-count">(${tree[y][m].length})</span></button>
+              <ul class="arc-posts">
+                ${tree[y][m].map(p => `<li><a href="${postUrl(p)}">${esc(p.title)}</a></li>`).join("")}
+                <li class="arc-all"><a href="${link("#/archive/" + k)}">Ver todas de ${MONTHS[m - 1]} »</a></li>
+              </ul></li>`;
+          }).join("")}</ul></li>`;
       }).join("")
     : '<li class="hint">Sem postagens.</li>';
 }
+
+/* Expandir/recolher anos e meses do arquivo */
+document.addEventListener("click", e => {
+  const t = e.target.closest("#archive-list .arc-toggle");
+  if (!t) return;
+  e.preventDefault();
+  t.parentElement.classList.toggle("open");
+});
 
 /* ==========================================================
    ROTEAMENTO (hash) — botões voltar/avançar funcionam
@@ -214,20 +235,25 @@ function route() {
   if (STATIC_PAGE) return renderStaticPage();
   if (!state.postsLoaded) return;
 
-  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-  const [type, ...rest] = h.split("/");
-  const arg = rest.join("/");
+  let raw = location.hash.replace(/^#\/?/, "");
+  let page = 1;
+  const pm = raw.match(/\/p\/(\d+)$/);
+  if (pm) { page = Number(pm[1]) || 1; raw = raw.slice(0, pm.index); }
+  const [type, ...restRaw] = raw.split("/");
+  const argRaw = restRaw.join("/");
+  const arg = decodeURIComponent(argRaw);
+  const base = "#/" + type + "/" + argRaw;
 
   if (type === "post") return renderPost(arg);
-  if (type === "label") return renderList(state.posts.filter(p => (p.labels || []).includes(arg)), `Marcador: <b>${esc(arg)}</b>`, 1, "#/label/" + encodeURIComponent(arg));
+  if (type === "label") return renderList(state.posts.filter(p => (p.labels || []).includes(arg)), `Marcador: <b>${esc(arg)}</b>`, page, base);
   if (type === "search") {
     const q = arg.toLowerCase();
     $("#search-input").value = arg;
-    return renderList(state.posts.filter(p => (p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" ")).toLowerCase().includes(q)), `Resultados para: <b>${esc(arg)}</b>`);
+    return renderList(state.posts.filter(p => (p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" ")).toLowerCase().includes(q)), `Resultados para: <b>${esc(arg)}</b>`, page, base);
   }
   if (type === "archive") {
     const [y, m] = arg.split("-").map(Number);
-    return renderList(state.posts.filter(p => { const d = new Date(p.date); return d.getFullYear() === y && d.getMonth() + 1 === m; }), `Arquivo: <b>${MONTHS[m - 1]} ${y}</b>`);
+    return renderList(state.posts.filter(p => { const d = new Date(p.date); return d.getFullYear() === y && (!m || d.getMonth() + 1 === m); }), `Arquivo: <b>${m ? MONTHS[m - 1] + " " : ""}${y}</b>`, page, base);
   }
   if (type === "page") return renderList(state.posts, "", Number(arg) || 1);
   renderList(state.posts, "", 1);
@@ -239,7 +265,9 @@ function renderList(posts, heading, page = 1, base = "") {
   document.title = state.settings.title || "Blog";
   const per = Number(state.settings.postsPerPage) || 6;
   const total = Math.max(1, Math.ceil(posts.length / per));
+  page = Math.min(Math.max(1, page), total);
   const slice = posts.slice((page - 1) * per, page * per);
+  const pageHref = n => base ? (n > 1 ? base + "/p/" + n : base) : (n > 1 ? "#/page/" + n : "#/");
   const el = $("#content");
 
   if (!posts.length) {
@@ -258,10 +286,10 @@ function renderList(posts, heading, page = 1, base = "") {
           <a class="btn" href="${postUrl(p)}">Ler mais...</a>
         </div>
       </article>`).join("") +
-    (total > 1 && !heading ? `
+    (total > 1 ? `
       <div class="pager">
-        ${page > 1 ? `<a class="btn ghost" href="#/page/${page - 1}">« Mais recentes</a>` : "<span></span>"}
-        ${page < total ? `<a class="btn ghost" href="#/page/${page + 1}">Mais antigas »</a>` : ""}
+        ${page > 1 ? `<a class="btn ghost" href="${pageHref(page - 1)}">« Mais recentes</a>` : "<span></span>"}
+        ${page < total ? `<a class="btn ghost" href="${pageHref(page + 1)}">Mais antigas »</a>` : ""}
       </div>` : "");
 
   $$(".post-card", el).forEach(c => c.addEventListener("click", e => {
@@ -628,20 +656,37 @@ function adminMenu(body) {
         <select id="m-tab"><option value="">Mesma aba</option><option value="1">Nova aba</option></select>
       </div>
       <p class="hint">Dica: para marcadores use <code>#/label/NomeDoMarcador</code>; para páginas padrões use <code>nome-da-pasta/</code>.</p>
-      <div><button class="btn" type="submit">+ Adicionar ao menu</button></div>
+      <div><button class="btn" type="submit" id="m-submit">+ Adicionar ao menu</button> <button class="btn ghost" type="button" id="m-cancel" style="display:none">Cancelar edição</button></div>
     </form>
     <ul class="admin-list">${state.menu.map((m, i) => `
       <li><div><b>${esc(m.label)}</b><br><small>${esc(m.url)}</small></div>
       <div class="actions"><button class="btn sm ghost" data-up="${i}">↑</button><button class="btn sm ghost" data-down="${i}">↓</button>
+      <button class="btn sm ghost" data-edit="${m.id}">Editar</button>
       <button class="btn sm danger" data-del="${m.id}">Excluir</button></div></li>`).join("") || '<li class="hint">Menu vazio (apenas "Início").</li>'}
     </ul>
     <hr style="border-color:var(--border);margin:20px 0">
     <p class="hint">Atalho: adicionar um marcador existente ao menu</p>
     <div class="tags" style="margin-top:10px">${[...new Set(state.posts.flatMap(p => p.labels || []))].map(l => `<button class="tag" data-lbl="${esc(l)}">+ ${esc(l)}</button>`).join("") || '<span class="hint">Sem marcadores.</span>'}</div>`;
+  let editingId = null;
+  const resetForm = () => {
+    editingId = null; $("#menu-form").reset();
+    $("#m-submit").textContent = "+ Adicionar ao menu"; $("#m-cancel").style.display = "none";
+  };
+  $("#m-cancel").onclick = resetForm;
   $("#menu-form").onsubmit = e => {
     e.preventDefault();
-    db.ref("menu").push({ label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value, order: Date.now() });
+    const data = { label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value };
+    if (editingId) db.ref("menu/" + editingId).update(data);
+    else db.ref("menu").push({ ...data, order: Date.now() });
+    resetForm();
   };
+  $$("[data-edit]", body).forEach(b => b.onclick = () => {
+    const m = state.menu.find(x => x.id === b.dataset.edit); if (!m) return;
+    editingId = m.id;
+    $("#m-label").value = m.label || ""; $("#m-url").value = m.url || ""; $("#m-tab").value = m.newTab ? "1" : "";
+    $("#m-submit").textContent = "Salvar alterações"; $("#m-cancel").style.display = "";
+    $("#m-label").focus(); $("#menu-form").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
   $$("[data-lbl]", body).forEach(b => b.onclick = () => db.ref("menu").push({ label: b.dataset.lbl, url: "#/label/" + b.dataset.lbl, order: Date.now() }));
   $$("[data-del]", body).forEach(b => b.onclick = () => db.ref("menu/" + b.dataset.del).remove());
   const swap = (i, j) => {
