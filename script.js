@@ -186,21 +186,42 @@ function renderSidebar() {
     ? lk.map(l => `<a class="tag" href="${link("#/label/" + encodeURIComponent(l))}">${esc(l)} (${labels[l]})</a>`).join("")
     : '<span class="hint">Nenhum marcador.</span>';
 
-  // Arquivo
-  const groups = {};
+  // Arquivo — agrupado por ano > mês > postagens (expansível)
+  const tree = {};
   state.posts.forEach(p => {
-    const d = new Date(p.date);
-    const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
-    groups[k] = (groups[k] || 0) + 1;
+    const d = new Date(p.date), y = d.getFullYear(), m = d.getMonth() + 1;
+    ((tree[y] = tree[y] || {})[m] = tree[y][m] || []).push(p);
   });
-  const keys = Object.keys(groups).sort().reverse();
-  $("#archive-list").innerHTML = keys.length
-    ? keys.map(k => {
-        const [y, m] = k.split("-");
-        return `<li><a href="${link("#/archive/" + k)}">${MONTHS[+m - 1]} ${y}</a><span>(${groups[k]})</span></li>`;
+  const years = Object.keys(tree).map(Number).sort((a, b) => b - a);
+  const openY = new Set($$("#archive-list .arc-year.open").map(e => e.dataset.y));
+  const openM = new Set($$("#archive-list .arc-month.open").map(e => e.dataset.k));
+  if (!openY.size && years.length) openY.add(String(years[0]));
+  $("#archive-list").innerHTML = years.length
+    ? years.map(y => {
+        const months = Object.keys(tree[y]).map(Number).sort((a, b) => b - a);
+        const cy = months.reduce((n, m) => n + tree[y][m].length, 0);
+        return `<li class="arc-year${openY.has(String(y)) ? " open" : ""}" data-y="${y}">
+          <button type="button" class="arc-toggle"><span class="arc-caret">▸</span> ${y} <span class="arc-count">(${cy})</span></button>
+          <ul class="arc-months">${months.map(m => {
+            const k = y + "-" + String(m).padStart(2, "0");
+            return `<li class="arc-month${openM.has(k) ? " open" : ""}" data-k="${k}">
+              <button type="button" class="arc-toggle"><span class="arc-caret">▸</span> ${MONTHS[m - 1]} <span class="arc-count">(${tree[y][m].length})</span></button>
+              <ul class="arc-posts">
+                ${tree[y][m].map(p => `<li><a href="${postUrl(p)}">${esc(p.title)}</a></li>`).join("")}
+                <li class="arc-all"><a href="${link("#/archive/" + k)}">Ver todas de ${MONTHS[m - 1]} »</a></li>
+              </ul></li>`;
+          }).join("")}</ul></li>`;
       }).join("")
     : '<li class="hint">Sem postagens.</li>';
 }
+
+/* Expandir/recolher anos e meses do arquivo */
+document.addEventListener("click", e => {
+  const t = e.target.closest("#archive-list .arc-toggle");
+  if (!t) return;
+  e.preventDefault();
+  t.parentElement.classList.toggle("open");
+});
 
 /* ==========================================================
    ROTEAMENTO (hash) — botões voltar/avançar funcionam
@@ -214,20 +235,25 @@ function route() {
   if (STATIC_PAGE) return renderStaticPage();
   if (!state.postsLoaded) return;
 
-  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-  const [type, ...rest] = h.split("/");
-  const arg = rest.join("/");
+  let raw = location.hash.replace(/^#\/?/, "");
+  let page = 1;
+  const pm = raw.match(/\/p\/(\d+)$/);
+  if (pm) { page = Number(pm[1]) || 1; raw = raw.slice(0, pm.index); }
+  const [type, ...restRaw] = raw.split("/");
+  const argRaw = restRaw.join("/");
+  const arg = decodeURIComponent(argRaw);
+  const base = "#/" + type + "/" + argRaw;
 
   if (type === "post") return renderPost(arg);
-  if (type === "label") return renderList(state.posts.filter(p => (p.labels || []).includes(arg)), `Marcador: <b>${esc(arg)}</b>`, 1, "#/label/" + encodeURIComponent(arg));
+  if (type === "label") return renderList(state.posts.filter(p => (p.labels || []).includes(arg)), `Marcador: <b>${esc(arg)}</b>`, page, base);
   if (type === "search") {
     const q = arg.toLowerCase();
     $("#search-input").value = arg;
-    return renderList(state.posts.filter(p => (p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" ")).toLowerCase().includes(q)), `Resultados para: <b>${esc(arg)}</b>`);
+    return renderList(state.posts.filter(p => (p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" ")).toLowerCase().includes(q)), `Resultados para: <b>${esc(arg)}</b>`, page, base);
   }
   if (type === "archive") {
     const [y, m] = arg.split("-").map(Number);
-    return renderList(state.posts.filter(p => { const d = new Date(p.date); return d.getFullYear() === y && d.getMonth() + 1 === m; }), `Arquivo: <b>${MONTHS[m - 1]} ${y}</b>`);
+    return renderList(state.posts.filter(p => { const d = new Date(p.date); return d.getFullYear() === y && (!m || d.getMonth() + 1 === m); }), `Arquivo: <b>${m ? MONTHS[m - 1] + " " : ""}${y}</b>`, page, base);
   }
   if (type === "page") return renderList(state.posts, "", Number(arg) || 1);
   renderList(state.posts, "", 1);
@@ -239,7 +265,9 @@ function renderList(posts, heading, page = 1, base = "") {
   document.title = state.settings.title || "Blog";
   const per = Number(state.settings.postsPerPage) || 6;
   const total = Math.max(1, Math.ceil(posts.length / per));
+  page = Math.min(Math.max(1, page), total);
   const slice = posts.slice((page - 1) * per, page * per);
+  const pageHref = n => base ? (n > 1 ? base + "/p/" + n : base) : (n > 1 ? "#/page/" + n : "#/");
   const el = $("#content");
 
   if (!posts.length) {
@@ -258,10 +286,10 @@ function renderList(posts, heading, page = 1, base = "") {
           <a class="btn" href="${postUrl(p)}">Ler mais...</a>
         </div>
       </article>`).join("") +
-    (total > 1 && !heading ? `
+    (total > 1 ? `
       <div class="pager">
-        ${page > 1 ? `<a class="btn ghost" href="#/page/${page - 1}">« Mais recentes</a>` : "<span></span>"}
-        ${page < total ? `<a class="btn ghost" href="#/page/${page + 1}">Mais antigas »</a>` : ""}
+        ${page > 1 ? `<a class="btn ghost" href="${pageHref(page - 1)}">« Mais recentes</a>` : "<span></span>"}
+        ${page < total ? `<a class="btn ghost" href="${pageHref(page + 1)}">Mais antigas »</a>` : ""}
       </div>` : "");
 
   $$(".post-card", el).forEach(c => c.addEventListener("click", e => {

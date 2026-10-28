@@ -176,8 +176,20 @@ img { max-width: 100%; height: auto; }
 .search-form input { flex: 1; border-radius: 3px 0 0 3px; }
 .search-form button { background: var(--primary); border: none; color: var(--bg); font-size: 22px; padding: 0 16px; cursor: pointer; border-radius: 0 3px 3px 0; }
 .archive { list-style: none; }
-.archive li { padding: 6px 0; border-bottom: 1px dashed var(--border); display: flex; justify-content: space-between; }
-.archive li span { color: var(--muted); }
+.archive ul { list-style: none; margin: 0; padding: 0; }
+.archive .arc-year { border-bottom: 1px dashed var(--border); }
+.archive .arc-toggle { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 0; color: var(--text); font-weight: 600; }
+.archive .arc-toggle:hover { color: var(--primary); }
+.archive .arc-month .arc-toggle { font-weight: 500; padding: 5px 0; }
+.archive .arc-count { color: var(--muted); font-weight: 400; margin-left: auto; }
+.archive .arc-caret { display: inline-block; transition: transform .2s; color: var(--primary); font-size: .8em; }
+.archive .open > .arc-toggle > .arc-caret { transform: rotate(90deg); }
+.archive .arc-months, .archive .arc-posts { display: none; padding-left: 16px; }
+.archive .open > .arc-months, .archive .open > .arc-posts { display: block; }
+.archive .arc-posts li { padding: 4px 0; font-size: .92em; line-height: 1.35; }
+.archive .arc-posts a { color: var(--text); text-decoration: none; }
+.archive .arc-posts a:hover { color: var(--primary); }
+.archive .arc-posts .arc-all a { color: var(--primary); font-size: .9em; }
 
 /* Compatibilidade com widgets do Blogger */
 .widget ul { padding-left: 18px; }
