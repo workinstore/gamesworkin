@@ -113,6 +113,89 @@
 
   <div class="toast" id="toast" hidden></div>
 
+
+<!--Início do Código do Efeito de Pó Brilhante no Mouse-->
+<div id="mouse-sparkle-container">
+    <style>
+        /* Estilo para as partículas de brilho */
+        .sparkle {
+            position: absolute;
+            z-index: 99999;
+            width: 10px;
+            height: 10px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 224, 1) 40%, rgba(255, 215, 0, 0) 70%);
+            border-radius: 50%;
+            pointer-events: none; /* Impede que as partículas interfiram com cliques */
+            animation: fadeAndMove 1s forwards;
+            transform-origin: center;
+        }
+
+        /* Animação para desaparecer e mover as partículas */
+        @keyframes fadeAndMove {
+            0% {
+                transform: scale(1) translate(0, 0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(0) translate(var(--end-x, 0), var(--end-y, 0));
+                opacity: 0;
+            }
+        }
+    </style>
+
+    <script>
+        (function() {
+            // Garante que o script seja executado apenas uma vez
+            if (window.sparkleEffectLoaded) {
+                return;
+            }
+            window.sparkleEffectLoaded = true;
+
+            let throttle = false;
+            const throttleDuration = 25; // ms - Menor valor = mais partículas
+
+            document.addEventListener('mousemove', function(e) {
+                if (!throttle) {
+                    throttle = true;
+                    setTimeout(function() {
+                        throttle = false;
+                    }, throttleDuration);
+
+                    createSparkle(e.pageX, e.pageY);
+                }
+            });
+
+            function createSparkle(x, y) {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'sparkle';
+                document.body.appendChild(sparkle);
+
+                // Propriedades aleatórias para um efeito mais natural
+                const size = Math.random() * 12 + 4; // Tamanho entre 4px e 16px
+                const endX = (Math.random() - 0.5) * 100; // Deslocamento final horizontal
+                const endY = (Math.random() - 0.5) * 100; // Deslocamento final vertical
+
+                // Define as variáveis CSS para a animação
+                sparkle.style.setProperty('--end-x', endX + 'px');
+                sparkle.style.setProperty('--end-y', endY + 'px');
+
+                // Define tamanho e posição inicial
+                sparkle.style.width = size + 'px';
+                sparkle.style.height = size + 'px';
+                sparkle.style.left = x - (size / 2) + 'px';
+                sparkle.style.top = y - (size / 2) + 'px';
+                
+                // Remove a partícula do DOM após a animação para manter o desempenho
+                setTimeout(function() {
+                    sparkle.remove();
+                }, 1000); // Duração da animação em milissegundos
+            }
+        })();
+    </script>
+</div>
+<!--Fim do Código do Efeito de Pó Brilhante no Mouse--><p></p>
+
+  
   <!-- Firebase (compat) + JSZip -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
