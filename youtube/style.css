@@ -52,7 +52,7 @@ img { max-width: 100%; height: auto; }
 }
 .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 22px 20px; }
 .brand { display: flex; align-items: center; gap: 16px; }
-.logo-square { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius); box-shadow: var(--glow); }
+.logo-square { width: 64px; height: 64px; object-fit: contain; background: transparent; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--primary) 70%, transparent)) drop-shadow(0 0 14px color-mix(in srgb, var(--primary) 45%, transparent)); }
 .logo-wide { max-height: 64px; width: auto; }
 .brand-text {
   font-family: var(--font-title); font-weight: 900; font-size: 30px; letter-spacing: 3px;
