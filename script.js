@@ -104,7 +104,8 @@ db.ref("widgets").on("value", snap => {
 });
 
 db.ref("posts").on("value", snap => {
-  state.posts = objToList(snap.val()).sort((a, b) => (b.date || 0) - (a.date || 0));
+  state.allPosts = objToList(snap.val()).sort((a, b) => (b.date || 0) - (a.date || 0));
+  state.posts = state.allPosts.filter(p => !p.draft); // rascunhos não aparecem no blog
   state.postsLoaded = true;
   renderSidebar();
   if (!STATIC_PAGE) route();
@@ -300,7 +301,7 @@ function renderList(posts, heading, page = 1, base = "") {
 
 let commentsRef = null;
 function renderPost(id) {
-  const p = state.posts.find(x => x.id === id);
+  const p = (auth.currentUser ? (state.allPosts || state.posts) : state.posts).find(x => x.id === id);
   const el = $("#content");
   if (commentsRef) { commentsRef.off(); commentsRef = null; }
   if (!p) { el.innerHTML = '<div class="empty">Postagem não encontrada. <a href="#/">Voltar ao início</a></div>'; return; }
@@ -497,7 +498,7 @@ function adminPosts(body) {
   if (editing) return;
   const norm = t => (t || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const q = norm(adminPostQuery.trim());
-  const list = q ? state.posts.filter(p => norm(p.title).includes(q) || norm((p.labels || []).join(" ")).includes(q) || norm(p.content).includes(q)) : state.posts;
+  const list = q ? state.posts.filter(p => norm(p.title).includes(q) || norm((p.labels || []).join(" ")).includes(q) || norm(p.content).includes(q)) : (state.allPosts || state.posts);
   const total = Math.max(1, Math.ceil(list.length / ADMIN_PER_PAGE));
   if (adminPostPage > total) adminPostPage = total;
   if (adminPostPage < 1) adminPostPage = 1;
@@ -521,7 +522,7 @@ function adminPosts(body) {
     </div>
     <p class="hint admin-count">${list.length} postagem(ns)${q ? " encontrada(s)" : ""} · página ${cur} de ${total}</p>
     <ul class="admin-list">${items.map(p => `
-      <li><div class="info"><b>${esc(p.title)}</b><small>${fmtDate(p.date)} · ${esc((p.labels || []).join(", "))}</small></div>
+      <li><div class="info"><b>${p.draft ? '<span class="draft-badge">Rascunho</span> ' : ""}${esc(p.title)}</b><small>${fmtDate(p.date)} · ${esc((p.labels || []).join(", "))}</small></div>
       <div class="actions"><a class="btn sm ghost" href="#/post/${p.id}" target="_blank">Ver</a>
       <button class="btn sm" data-edit="${p.id}">Editar</button><button class="btn sm danger" data-del="${p.id}">Excluir</button></div></li>`).join("") || `<li class="hint">${q ? "Nenhuma postagem encontrada." : "Nenhuma postagem ainda."}</li>`}
     </ul>${pag}`;
@@ -533,7 +534,7 @@ function adminPosts(body) {
     const n = $("#admin-post-search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length);
   }, 250); };
   $$("[data-pg]", body).forEach(b => b.onclick = () => { adminPostPage = +b.dataset.pg; adminPosts(body); $("#admin-panel").scrollTop = 0; });
-  $$("[data-edit]", body).forEach(b => b.onclick = () => postForm(body, state.posts.find(p => p.id === b.dataset.edit)));
+  $$("[data-edit]", body).forEach(b => b.onclick = () => postForm(body, (state.allPosts || state.posts).find(p => p.id === b.dataset.edit)));
   $$("[data-del]", body).forEach(b => b.onclick = () => {
     if (confirm("Excluir esta postagem e seus comentários?")) {
       db.ref("posts/" + b.dataset.del).remove(); db.ref("comments/" + b.dataset.del).remove(); toast("Postagem excluída.");
@@ -554,21 +555,23 @@ function postForm(body, post) {
       </div>
       <label>Marcadores (separados por vírgula)</label><input id="p-labels" value="${esc((post?.labels || []).join(", "))}" placeholder="Reviews, PC, PlayStation">
       <label>Conteúdo</label>${editorHTML()}
-      <div style="display:flex;gap:10px"><button class="btn" type="submit">Publicar</button><button class="btn ghost" type="button" id="p-cancel">Cancelar</button></div>
+      <div style="display:flex;gap:10px"><button class="btn" type="submit" data-mode="publish">Publicar</button><button class="btn ghost" type="submit" data-mode="draft">Salvar rascunho</button><button class="btn ghost" type="button" id="p-cancel">Cancelar</button></div>
     </form>`;
   setupEditor(post?.content);
   $("#p-cancel").onclick = () => { editing = null; renderAdmin(); };
   $("#post-form").onsubmit = e => {
     e.preventDefault();
+    const isDraft = (e.submitter && e.submitter.dataset.mode) === "draft";
     const data = {
       title: $("#p-title").value.trim(),
       image: $("#p-image").value.trim(),
       date: new Date($("#p-date").value).getTime() || Date.now(),
       labels: $("#p-labels").value.split(",").map(s => s.trim()).filter(Boolean),
-      content: editorValue()
+      content: editorValue(),
+      draft: isDraft
     };
     const ref = post ? db.ref("posts/" + post.id) : db.ref("posts").push();
-    ref.set(data).then(() => { toast("Postagem salva!"); editing = null; renderAdmin(); }).catch(err => toast(err.message));
+    ref.set(data).then(() => { toast(isDraft ? "Rascunho salvo! Ele não aparece no blog até ser publicado." : "Postagem publicada!"); editing = null; renderAdmin(); }).catch(err => toast(err.message));
   };
 }
 
@@ -675,6 +678,7 @@ function adminMenu(body) {
   $("#m-cancel").onclick = resetForm;
   $("#menu-form").onsubmit = e => {
     e.preventDefault();
+    const isDraft = (e.submitter && e.submitter.dataset.mode) === "draft";
     const data = { label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value };
     if (editingId) db.ref("menu/" + editingId).update(data);
     else db.ref("menu").push({ ...data, order: Date.now() });
@@ -721,6 +725,7 @@ function adminWidgets(body, w = null) {
         <button class="btn sm" data-edit="${x.id}">Editar</button><button class="btn sm danger" data-del="${x.id}">Excluir</button></div></li>`).join("") || '<li class="hint">Vazio</li>'}</ul>`).join("")}`;
   $("#w-form").onsubmit = e => {
     e.preventDefault();
+    const isDraft = (e.submitter && e.submitter.dataset.mode) === "draft";
     const data = { title: $("#w-title").value.trim(), area: $("#w-area").value, cssClass: $("#w-class").value.trim(), html: $("#w-html").value, enabled: w ? w.enabled !== false : true, order: w?.order || Date.now() };
     (w ? db.ref("widgets/" + w.id) : db.ref("widgets").push()).set(data).then(() => toast("Widget salvo!"));
   };
@@ -890,7 +895,7 @@ ${o.title ? `  <div class="bf-title">${esc(o.title)}</div>\n` : ""}  <ul class="
   function e(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
   function txt(h){var d=document.createElement("div");d.innerHTML=h||"";return(d.textContent||"").trim()}
   fetch(C.db.replace(/\\/$/,"")+"/posts.json").then(function(r){return r.json()}).then(function(d){
-    var l=Object.keys(d||{}).map(function(k){var p=d[k];p.id=k;return p}).sort(function(a,b){return(b.date||0)-(a.date||0)}).slice(0,C.qty);
+    var l=Object.keys(d||{}).map(function(k){var p=d[k];p.id=k;return p}).filter(function(p){return !p.draft}).sort(function(a,b){return(b.date||0)-(a.date||0)}).slice(0,C.qty);
     if(!l.length){ul.innerHTML='<li class="bf-msg">Nenhuma postagem.</li>';return}
     ul.innerHTML=l.map(function(p){
       var u=C.url+"#/post/"+encodeURIComponent(p.id),s=txt(p.content);

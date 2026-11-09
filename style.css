@@ -317,3 +317,6 @@ textarea.code { font-family: monospace; font-size: 14px; min-height: 260px; }
 .login-spinner { width: 56px; height: 56px; border: 3px solid color-mix(in srgb, var(--primary) 20%, transparent); border-top-color: var(--primary); border-radius: 50%; animation: login-spin .8s linear infinite; }
 .login-overlay p { color: var(--text); letter-spacing: 2px; margin: 0; }
 @keyframes login-spin { to { transform: rotate(360deg); } }
+
+/* Rascunhos */
+.draft-badge { display: inline-block; font-size: 11px; padding: 2px 8px; margin-right: 6px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; text-transform: uppercase; letter-spacing: .5px; vertical-align: middle; }
