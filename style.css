@@ -84,6 +84,32 @@ img { max-width: 100%; height: auto; }
 .main-nav a:hover, .main-nav a.active { color: var(--primary); }
 .main-nav a:hover::after, .main-nav a.active::after { width: 70%; }
 
+/* ===== SUBMENUS ===== */
+.main-nav li { position: relative; }
+.main-nav .has-sub { display: flex; align-items: center; }
+.main-nav .has-sub > a { padding-right: 6px; }
+.main-nav .sub-toggle {
+  background: none; border: 0; color: var(--text); cursor: pointer; padding: 14px 14px 14px 2px;
+  font-size: 12px; transition: transform .2s, color .2s;
+}
+.main-nav .has-sub:hover > .sub-toggle, .main-nav .has-sub.open > .sub-toggle { color: var(--primary); }
+.main-nav .has-sub.open > .sub-toggle { transform: rotate(180deg); }
+.main-nav .submenu {
+  position: absolute; top: 100%; left: 0; min-width: 220px; z-index: 60;
+  display: flex; flex-direction: column; flex-wrap: nowrap;
+  background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--primary);
+  box-shadow: 0 12px 30px -10px rgba(0,0,0,.45);
+  opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity .2s, transform .2s, visibility .2s;
+}
+.main-nav .submenu a { padding: 12px 18px; font-size: 12px; letter-spacing: 1.5px; white-space: nowrap; }
+.main-nav .submenu a::after { display: none; }
+.main-nav .submenu li + li { border-top: 1px solid var(--border); }
+.main-nav .submenu a:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+.main-nav .has-sub.open > .submenu { opacity: 1; visibility: visible; transform: none; }
+@media (hover: hover) and (min-width: 921px) {
+  .main-nav .has-sub:hover > .submenu, .main-nav .has-sub:focus-within > .submenu { opacity: 1; visibility: visible; transform: none; }
+}
+
 /* ===== LAYOUT ===== */
 .layout {
   display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px;
@@ -263,6 +289,11 @@ textarea.code { font-family: monospace; font-size: 14px; min-height: 260px; }
   .menu-toggle { display: block; }
   .main-nav ul { display: none; flex-direction: column; }
   .main-nav.open ul { display: flex; }
+  .main-nav .has-sub { flex-wrap: wrap; justify-content: space-between; }
+  .main-nav .submenu { position: static; width: 100%; min-width: 0; box-shadow: none; border: 0; border-left: 2px solid var(--primary);
+    margin-left: 20px; opacity: 1; visibility: visible; transform: none; display: none !important; }
+  .main-nav .has-sub.open > .submenu { display: flex !important; }
+  .main-nav .submenu a { white-space: normal; }
   .brand-text { font-size: 22px; }
   .logo-square { width: 48px; height: 48px; }
   .logo-wide { max-height: 48px; }

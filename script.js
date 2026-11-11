@@ -56,6 +56,10 @@ const esc = (s = "") => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<":
 const stripHtml = (html = "") => { const d = document.createElement("div"); d.innerHTML = html; return (d.textContent || "").trim(); };
 const fmtDate = ts => new Date(ts).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+/** Normaliza texto para pesquisa: sem acentos, sem caracteres especiais, minúsculo */
+const normSearch = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/ç/g, "c").replace(/[^a-z0-9]+/g, " ").trim();
+const searchMatch = (text, q) => { const n = normSearch(text), w = normSearch(q).split(" ").filter(Boolean); return w.every(x => n.includes(x)); };
 const slugify = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "pagina";
 
 /** Link interno: na página estática aponta para o blog principal */
@@ -146,10 +150,27 @@ function applySettings() {
 }
 
 function renderMenu() {
-  const items = [{ label: "Início", url: "#/" }, ...state.menu];
-  $("#menu-list").innerHTML = items.map(m =>
-    `<li><a href="${esc(menuUrl(m.url))}" ${m.newTab ? 'target="_blank" rel="noopener"' : ""}>${esc(m.label)}</a></li>`
-  ).join("");
+  const ids = new Set(state.menu.map(m => m.id));
+  const top = [{ label: "Início", url: "#/" }, ...state.menu.filter(m => !m.parent || !ids.has(m.parent))];
+  const a = m => `<a href="${esc(m.url ? menuUrl(m.url) : "#")}" ${m.newTab ? 'target="_blank" rel="noopener"' : ""}${!m.url || m.url === "#" ? ' data-toggle-sub' : ""}>${esc(m.label)}</a>`;
+  $("#menu-list").innerHTML = top.map(m => {
+    const kids = m.id ? state.menu.filter(c => c.parent === m.id) : [];
+    if (!kids.length) return `<li>${a(m)}</li>`;
+    return `<li class="has-sub">${a(m).replace("<a ", '<a aria-haspopup="true" ')}<button class="sub-toggle" type="button" aria-label="Abrir submenu" aria-expanded="false">▾</button>
+      <ul class="submenu">${kids.map(c => `<li>${a(c)}</li>`).join("")}</ul></li>`;
+  }).join("");
+  $$("#menu-list .has-sub").forEach(li => {
+    const toggle = e => {
+      e.preventDefault(); e.stopPropagation();
+      const open = !li.classList.contains("open");
+      $$("#menu-list .has-sub.open").forEach(o => { o.classList.remove("open"); $(".sub-toggle", o).setAttribute("aria-expanded", "false"); });
+      li.classList.toggle("open", open); $(".sub-toggle", li).setAttribute("aria-expanded", String(open));
+    };
+    $(".sub-toggle", li).onclick = toggle;
+    const pa = li.querySelector(":scope > a");
+    if (pa.hasAttribute("data-toggle-sub")) pa.onclick = toggle;
+  });
+  $$("#menu-list .submenu a").forEach(x => x.addEventListener("click", () => $$("#menu-list .has-sub.open").forEach(o => o.classList.remove("open"))));
   highlightMenu();
 }
 
@@ -248,9 +269,8 @@ function route() {
   if (type === "post") return renderPost(arg);
   if (type === "label") return renderList(state.posts.filter(p => (p.labels || []).includes(arg)), `Marcador: <b>${esc(arg)}</b>`, page, base);
   if (type === "search") {
-    const q = arg.toLowerCase();
     $("#search-input").value = arg;
-    return renderList(state.posts.filter(p => (p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" ")).toLowerCase().includes(q)), `Resultados para: <b>${esc(arg)}</b>`, page, base);
+    return renderList(state.posts.filter(p => searchMatch(p.title + " " + stripHtml(p.content) + " " + (p.labels || []).join(" "), arg)), `Resultados para: <b>${esc(arg)}</b>`, page, base);
   }
   if (type === "archive") {
     const [y, m] = arg.split("-").map(Number);
@@ -380,6 +400,7 @@ $("#search-form").addEventListener("submit", e => {
   const q = $("#search-input").value.trim();
   if (q) location.href = link("#/search/" + encodeURIComponent(q));
 });
+document.addEventListener("click", e => { if (!e.target.closest("#menu-list .has-sub")) $$("#menu-list .has-sub.open").forEach(o => o.classList.remove("open")); });
 $("#menu-toggle").addEventListener("click", () => $("#main-nav").classList.toggle("open"));
 
 /* ==========================================================
@@ -496,9 +517,8 @@ let adminPostPage = 1, adminPostQuery = "";
 const ADMIN_PER_PAGE = 15, ADMIN_MAX_BTNS = 5;
 function adminPosts(body) {
   if (editing) return;
-  const norm = t => (t || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const q = norm(adminPostQuery.trim());
-  const list = q ? state.posts.filter(p => norm(p.title).includes(q) || norm((p.labels || []).join(" ")).includes(q) || norm(p.content).includes(q)) : (state.allPosts || state.posts);
+  const q = normSearch(adminPostQuery);
+  const list = q ? state.posts.filter(p => searchMatch(p.title + " " + (p.labels || []).join(" ") + " " + stripHtml(p.content), q)) : (state.allPosts || state.posts);
   const total = Math.max(1, Math.ceil(list.length / ADMIN_PER_PAGE));
   if (adminPostPage > total) adminPostPage = total;
   if (adminPostPage < 1) adminPostPage = 1;
@@ -655,17 +675,19 @@ function adminMenu(body) {
     <form class="form" id="menu-form">
       <div class="row3">
         <input id="m-label" placeholder="Texto (ex: Contato)" required>
-        <input id="m-url" placeholder="Link (ex: contato/ ou #/label/Reviews)" required>
+        <input id="m-url" placeholder="Link (ex: contato/ ou # para menu pai sem link)">
         <select id="m-tab"><option value="">Mesma aba</option><option value="1">Nova aba</option></select>
       </div>
+      <select id="m-parent"><option value="">— Item principal (sem menu pai) —</option>${state.menu.filter(m => !m.parent).map(m => `<option value="${m.id}">Submenu de: ${esc(m.label)}</option>`).join("")}</select>
+      <p class="hint">Submenus: escolha um "menu pai" acima. No computador os submenus aparecem ao passar o mouse; no celular, ao tocar na setinha ▾. Se o menu pai não precisar de link, deixe o link vazio ou use <code>#</code> — clicar nele abrirá os submenus.</p>
       <p class="hint">Dica: para marcadores use <code>#/label/NomeDoMarcador</code>; para páginas padrões use <code>nome-da-pasta/</code>.</p>
       <div><button class="btn" type="submit" id="m-submit">+ Adicionar ao menu</button> <button class="btn ghost" type="button" id="m-cancel" style="display:none">Cancelar edição</button></div>
     </form>
-    <ul class="admin-list">${state.menu.map((m, i) => `
-      <li><div><b>${esc(m.label)}</b><br><small>${esc(m.url)}</small></div>
+    <ul class="admin-list">${state.menu.map((m, i) => { const par = m.parent && state.menu.find(x => x.id === m.parent); return `
+      <li${par ? ' style="margin-left:28px"' : ""}><div><b>${par ? "↳ " : ""}${esc(m.label)}</b><br><small>${par ? "Submenu de " + esc(par.label) + " · " : ""}${esc(m.url || "(sem link)")}</small></div>
       <div class="actions"><button class="btn sm ghost" data-up="${i}">↑</button><button class="btn sm ghost" data-down="${i}">↓</button>
       <button class="btn sm ghost" data-edit="${m.id}">Editar</button>
-      <button class="btn sm danger" data-del="${m.id}">Excluir</button></div></li>`).join("") || '<li class="hint">Menu vazio (apenas "Início").</li>'}
+      <button class="btn sm danger" data-del="${m.id}">Excluir</button></div></li>`; }).join("") || '<li class="hint">Menu vazio (apenas "Início").</li>'}
     </ul>
     <hr style="border-color:var(--border);margin:20px 0">
     <p class="hint">Atalho: adicionar um marcador existente ao menu</p>
@@ -679,7 +701,9 @@ function adminMenu(body) {
   $("#menu-form").onsubmit = e => {
     e.preventDefault();
     const isDraft = (e.submitter && e.submitter.dataset.mode) === "draft";
-    const data = { label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value };
+    const data = { label: $("#m-label").value.trim(), url: $("#m-url").value.trim(), newTab: !!$("#m-tab").value, parent: $("#m-parent").value || null };
+    if (editingId && data.parent === editingId) data.parent = null;
+    if (editingId && data.parent && state.menu.some(x => x.parent === editingId)) { toast("Este item tem submenus e não pode virar submenu."); return; }
     if (editingId) db.ref("menu/" + editingId).update(data);
     else db.ref("menu").push({ ...data, order: Date.now() });
     resetForm();
@@ -687,12 +711,17 @@ function adminMenu(body) {
   $$("[data-edit]", body).forEach(b => b.onclick = () => {
     const m = state.menu.find(x => x.id === b.dataset.edit); if (!m) return;
     editingId = m.id;
-    $("#m-label").value = m.label || ""; $("#m-url").value = m.url || ""; $("#m-tab").value = m.newTab ? "1" : "";
+    $("#m-label").value = m.label || ""; $("#m-url").value = m.url || ""; $("#m-tab").value = m.newTab ? "1" : ""; $("#m-parent").value = m.parent || "";
     $("#m-submit").textContent = "Salvar alterações"; $("#m-cancel").style.display = "";
     $("#m-label").focus(); $("#menu-form").scrollIntoView({ behavior: "smooth", block: "center" });
   });
   $$("[data-lbl]", body).forEach(b => b.onclick = () => db.ref("menu").push({ label: b.dataset.lbl, url: "#/label/" + b.dataset.lbl, order: Date.now() }));
-  $$("[data-del]", body).forEach(b => b.onclick = () => db.ref("menu/" + b.dataset.del).remove());
+  $$("[data-del]", body).forEach(b => b.onclick = () => {
+    const kids = state.menu.filter(x => x.parent === b.dataset.del);
+    if (kids.length && !confirm("Este item tem submenus. Eles virarão itens principais. Continuar?")) return;
+    const up = { ["menu/" + b.dataset.del]: null }; kids.forEach(k => up[`menu/${k.id}/parent`] = null);
+    db.ref().update(up);
+  });
   const swap = (i, j) => {
     const a = state.menu[i], c = state.menu[j]; if (!a || !c) return;
     db.ref().update({ [`menu/${a.id}/order`]: c.order || j, [`menu/${c.id}/order`]: a.order || i });
